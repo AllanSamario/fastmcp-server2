@@ -1,0 +1,57 @@
+{
+  "exportedAt": "2026-02-13T08:07:55.058Z",
+  "transactions": [
+    {
+      "id": 4,
+      "metal": "silver",
+      "amount": 23,
+      "unit": "grams",
+      "type": "buy",
+      "date": "2025-10-06T04:23:54.260Z",
+      "pricePerGram": 136.93
+    },
+    {
+      "id": 3,
+      "metal": "gold",
+      "amount": 23,
+      "unit": "grams",
+      "type": "buy",
+      "date": "2025-10-06T04:20:05.296Z",
+      "pricePerGram": 11088.67
+    },
+    {
+      "id": 2,
+      "metal": "gold",
+      "amount": 1000,
+      "unit": "rupees",
+      "type": "buy",
+      "date": "2025-10-06T04:15:21.013Z",
+      "pricePerGram": 11088.67
+    },
+    {
+      "id": 1,
+      "metal": "gold",
+      "amount": 25,
+      "unit": "grams",
+      "type": "buy",
+      "date": "2025-10-06T04:15:00.294Z",
+      "pricePerGram": 11088.67
+    }
+  ],
+  "dailyPrices": [
+    {
+      "id": 2,
+      "date": "2026-02-13",
+      "goldInrPerGram": 14744.98,
+      "silverInrPerGram": 242.9,
+      "fetchCount": 1
+    },
+    {
+      "id": 1,
+      "date": "2025-10-06",
+      "goldInrPerGram": 11088.67,
+      "silverInrPerGram": 136.93,
+      "fetchCount": 1
+    }
+  ]
+}
