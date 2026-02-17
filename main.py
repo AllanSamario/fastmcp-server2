@@ -85,7 +85,7 @@ Gold:
 Silver:
 - Total Grams: {silver['grams']:.2f}g
 - Current Price: ₹{silver['price']:,.2f}/g
-- Current Value: ₹{silver_stats['value']:,.2f}
+- Current Value: ₹{silver['value']:,.2f}
 """
     except Exception as e:
         return f"Error processing portfolio: {str(e)}"
