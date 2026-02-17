@@ -1,12 +1,13 @@
 import sys
+import os
+import json
 from pathlib import Path
 from fastmcp import FastMCP
-import json
-# from mcp.server.fastmcp import FastMCP
-from portfolio import analyze_portfolio
-from ai_engine import generate_ai_analysis
+from google import generativeai as genai
 
 mcp = FastMCP("Precious Metals Portfolio AI")
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 @mcp.tool()
@@ -19,7 +20,6 @@ def analyze_precious_metals() -> str:
     transactions = portfolio["transactions"]
     daily_prices = portfolio["dailyPrices"]
 
-    # Get latest daily price
     latest_price = max(daily_prices, key=lambda x: x["date"])
 
     gold_price_now = latest_price["goldInrPerGram"]
@@ -34,11 +34,7 @@ def analyze_precious_metals() -> str:
         metal = t["metal"]
         price_per_gram = t["pricePerGram"]
 
-        # Convert rupees to grams if needed
-        if unit == "rupees":
-            grams = amount / price_per_gram
-        else:
-            grams = amount
+        grams = amount / price_per_gram if unit == "rupees" else amount
 
         if metal == "gold":
             gold_grams += grams
@@ -70,31 +66,32 @@ Silver:
 - Allocation: {silver_alloc:.1f}%
 """
 
+
+@mcp.tool()
+def generate_ai_analysis() -> str:
     data_path = Path(__file__).parent / "data" / "portfolio_export.json"
 
-    with open(data_path, "r") as f:
-        portfolio = json.load(f)
+    # reuse your own MCP tool logic
+    summary = analyze_precious_metals()
 
-    gold_oz = portfolio["gold"]["ounces"]
-    gold_price = portfolio["gold"]["price"]
-    silver_oz = portfolio["silver"]["ounces"]
-    silver_price = portfolio["silver"]["price"]
+    prompt = f"""
+You are a professional financial advisor.
 
-    gold_value = gold_oz * gold_price
-    silver_value = silver_oz * silver_price
-    total = gold_value + silver_value
+Portfolio Summary:
+{summary}
 
-    return f"""
-Portfolio Analysis
-
-Total Value: ${total:,.2f}
-
-Gold: {gold_oz} oz at ${gold_price} = ${gold_value:,.2f}
-Silver: {silver_oz} oz at ${silver_price} = ${silver_value:,.2f}
-
-Gold Allocation: {(gold_value/total)*100:.1f}%
-Silver Allocation: {(silver_value/total)*100:.1f}%
+Provide:
+- Performance assessment
+- Risk comment
+- Strategic advice
+- Confidence level
 """
+
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    response = model.generate_content(prompt)
+
+    return response.text
+
 
 if __name__ == "__main__":
     print("MCP Server Started", file=sys.stderr)
