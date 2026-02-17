@@ -21,106 +21,108 @@ def get_ai_client() -> Optional[genai.Client]:
         return None
     return genai.Client(api_key=api_key)
 
+# --- THE UNIVERSAL MATH ENGINE ---
+def run_portfolio_calculation(portfolio: PortfolioFile) -> str:
+    """
+    Shared logic to calculate grams and value from a PortfolioFile object.
+    Ensures consistency between local file analysis and live AI analysis.
+    """
+    def process_metal(data: MetalData) -> Dict[str, Any]:
+        if not data.get("dailyPrices") or not data.get("transactions"):
+            return {"grams": 0.0, "value": 0.0, "price": 0.0}
+        
+        # Get latest price
+        latest: DailyPrice = max(data["dailyPrices"], key=lambda x: x["date"])
+        price_now: float = float(latest["pricePerGram"])
+        
+        total_grams: float = 0.0
+        for t in data["transactions"]:
+            t_price: float = float(t.get("pricePerGram", price_now))
+            amount: float = float(t["amount"])
+            
+            # Logic: If unit is rupees, convert to grams
+            grams: float = amount / t_price if t["unit"] == "rupees" else amount
+            
+            if t["type"] == "buy":
+                total_grams += grams
+            else:
+                total_grams -= grams
+                
+        return {
+            "grams": total_grams,
+            "price": price_now,
+            "value": total_grams * price_now
+        }
+
+    gold = process_metal(portfolio["gold"])
+    silver = process_metal(portfolio["silver"])
+    total_val = gold["value"] + silver["value"]
+
+    return f"""
+📊 Portfolio Stats:
+Total Portfolio Value: ₹{total_val:,.2f}
+
+Gold:
+- Total Grams: {gold['grams']:.2f}g
+- Current Value: ₹{gold['value']:,.2f}
+
+Silver:
+- Total Grams: {silver['grams']:.2f}g
+- Current Value: ₹{silver['value']:,.2f}
+"""
+
 @mcp.tool()
 def analyze_precious_metals() -> str:
-    """
-    Calculates portfolio statistics (Grams, Current Price, Value) 
-    using the TypedDict structure from models.py.
-    """
-    # Use absolute path resolution for Horizon cloud compatibility
+    """Standard Tool: Processes the local 'portfolio_export.json' file."""
     base_dir: Path = Path(__file__).resolve().parent
     data_path: Path = base_dir / "data" / "portfolio_export.json"
 
     if not data_path.exists():
         return f"Error: Portfolio data file not found at {data_path}."
 
-    try:
-        with open(data_path, "r") as f:
-            # Cast the JSON data to your PortfolioFile type
-            portfolio: PortfolioFile = json.load(f)
-
-        def process_metal(name: str, data: MetalData) -> Dict[str, Any]:
-            """Helper logic to process specific metal transactions."""
-            if not data.get("dailyPrices") or not data.get("transactions"):
-                return {"grams": 0.0, "value": 0.0, "price": 0.0}
-            
-            # Find the latest price entry
-            latest: DailyPrice = max(data["dailyPrices"], key=lambda x: x["date"])
-            price_now: float = float(latest["pricePerGram"])
-            
-            total_grams: float = 0.0
-            for t in data["transactions"]:
-                # Logic: If unit is rupees, convert to grams using the transaction-time price
-                # Ensure we handle strings/floats from JSON safely
-                t_price: float = float(t.get("pricePerGram", price_now))
-                amount: float = float(t["amount"])
-                
-                grams: float = amount / t_price if t["unit"] == "rupees" else amount
-                
-                if t["type"] == "buy":
-                    total_grams += grams
-                else:
-                    total_grams -= grams
-                
-            return {
-                "grams": total_grams,
-                "price": price_now,
-                "value": total_grams * price_now
-            }
-
-        # Process the nested structure defined in models.py
-        gold: Dict[str, Any] = process_metal("Gold", portfolio["gold"])
-        silver: Dict[str, Any] = process_metal("Silver", portfolio["silver"])
-        total_val: float = gold["value"] + silver["value"]
-
-        return f"""
-📊 Portfolio Analysis (via models.py)
-Total Portfolio Value: ₹{total_val:,.2f}
-
-Gold:
-- Total Grams: {gold['grams']:.2f}g
-- Current Price: ₹{gold['price']:,.2f}/g
-- Current Value: ₹{gold['value']:,.2f}
-
-Silver:
-- Total Grams: {silver['grams']:.2f}g
-- Current Price: ₹{silver['price']:,.2f}/g
-- Current Value: ₹{silver['value']:,.2f}
-"""
-    except Exception as e:
-        return f"Error processing portfolio: {str(e)}"
+    with open(data_path, "r") as f:
+        portfolio: PortfolioFile = json.load(f)
+    
+    return run_portfolio_calculation(portfolio)
 
 @mcp.tool()
-def generate_ai_analysis() -> str:
+def generate_ai_analysis(portfolio_data: Optional[str] = None, question: str = "General Analysis") -> str:
     """
-    Generates a professional financial assessment using Gemini 2.0 Flash 
-    based on the current portfolio data.
+    AI Tool: Accepts live JSON from the app (portfolio_data).
+    If none is provided, it falls back to the local file.
     """
-    # 1. Get current stats from our primary tool
-    summary: str = analyze_precious_metals()
-    
-    # 2. Setup Gemini Client
-    client: Optional[genai.Client] = get_ai_client()
-    if not client:
-        return "Error: GEMINI_API_KEY environment variable is not set in Horizon."
+    # 1. Get the Context (Math)
+    if portfolio_data:
+        try:
+            live_portfolio: PortfolioFile = json.loads(portfolio_data)
+            summary = run_portfolio_calculation(live_portfolio)
+        except Exception as e:
+            return f"Error parsing live data: {str(e)}"
+    else:
+        summary = analyze_precious_metals()
 
-    # 3. Request Analysis
-    prompt: str = (
-        "You are a professional financial advisor specializing in physical commodities. "
-        f"Analyze this precious metals portfolio summary and provide a performance assessment, "
-        f"risk comment, and strategic advice:\n\n{summary}"
-    )
+    # 2. Get AI Advice
+    client = get_ai_client()
+    if not client:
+        return "Error: GEMINI_API_KEY environment variable not set."
+
+    prompt: str = f"""
+    You are a professional financial advisor.
+    Current Portfolio Snapshot: {summary}
+    User Question: {question}
+
+    Provide a performance assessment, risk comment, and strategic advice.
+    """
 
     try:
         response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt
         )
-        return response.text if response.text else "AI Analysis failed to generate text."
+        return response.text if response.text else "AI Analysis failed."
     except Exception as e:
-        return f"Gemini API Error: {str(e)}"
+        return f"Gemini Error: {str(e)}"
 
 if __name__ == "__main__":
-    # stderr helps Horizon's logs stay clean
     print("Precious Metals MCP Server initializing...", file=sys.stderr)
     mcp.run()
